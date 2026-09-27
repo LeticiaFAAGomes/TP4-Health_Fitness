@@ -1,8 +1,7 @@
 package br.edu.infnet.ms_gestao_alunos.services;
 
-
-
-import br.edu.infnet.ms_gestao_alunos.client.HistoricoClient;
+import br.edu.infnet.ms_gestao_alunos.messaging.HistoricoPublisher;
+import br.edu.infnet.ms_gestao_alunos.messaging.RegistrarHistoricoCommand;
 import br.edu.infnet.ms_gestao_alunos.models.Aluno;
 import br.edu.infnet.ms_gestao_alunos.repositories.AlunoRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,14 +16,15 @@ public class AlunoService {
 
     @Autowired
     private AlunoRepository repository;
+
     @Autowired
-    private HistoricoClient historicoClient;
+    private HistoricoPublisher publisher;
 
     public Aluno salvar(Aluno aluno) {
 
         repository.save(aluno);
 
-        historicoClient.registrar(new HistoricoClient.HistoricoRequest(aluno.getId(), "Aluno cadastrado"));
+        publisher.publicarHistorico(new RegistrarHistoricoCommand(aluno.getId(), "Aluno cadastrado"));
 
         return aluno;
     }
@@ -48,8 +48,8 @@ public class AlunoService {
 
         repository.save(alunoAtualizar);
 
-        historicoClient.registrar(
-                new HistoricoClient.HistoricoRequest(id, "Cadastro de aluno atualizado.")
+        publisher.publicarHistorico(
+                new RegistrarHistoricoCommand(id, "Cadastro de aluno atualizado.")
         );
 
         return alunoAtualizar;
@@ -58,8 +58,8 @@ public class AlunoService {
     public Aluno deletar(Long id) {
         Aluno alunoDeletado = buscarPorId(id);
         repository.deleteById(id);
-        historicoClient.registrar(
-                new HistoricoClient.HistoricoRequest(id, "Cadastro de aluno deletado.")
+        publisher.publicarHistorico(
+                new RegistrarHistoricoCommand(id, "Cadastro de aluno deletado.")
         );
        return alunoDeletado;
     }
