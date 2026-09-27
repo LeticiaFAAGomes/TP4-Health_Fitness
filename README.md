@@ -1,31 +1,34 @@
 # 🏋️ Sistema de Gestão de Alunos
 
-### Teste de Performance 3
+### Teste de Performance 4
 
-#### Arquitetura de Microsserviços com Spring Boot + React
+#### Refatoração para Arquitetura Orientada a Eventos com Spring Boot + RabbitMQ
 
 ![Java](https://img.shields.io/badge/Java-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-6DB33F?style=for-the-badge&logo=spring-boot&logoColor=white)
 ![Spring Cloud](https://img.shields.io/badge/Spring%20Cloud-6DB33F?style=for-the-badge&logo=spring&logoColor=white)
-![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white)
 ![Maven](https://img.shields.io/badge/Maven-C71A36?style=for-the-badge&logo=apache-maven&logoColor=white)
 ![Eureka](https://img.shields.io/badge/Eureka-6DB33F?style=for-the-badge&logo=spring&logoColor=white)
-![OpenFeign](https://img.shields.io/badge/OpenFeign-6DB33F?style=for-the-badge&logo=spring&logoColor=white)
 
-Aplicação distribuída para **gestão de alunos e seus históricos**, desenvolvida utilizando uma arquitetura baseada em **microsserviços** com **Spring Boot** e **Spring Cloud** no back-end e **React** no front-end.
+Aplicação distribuída para **gestão de alunos e seus históricos**, desenvolvida utilizando uma arquitetura baseada em **microsserviços** com **Spring Boot** e **Spring Cloud**.
 
-O projeto foi desenvolvido como terceira entrega do TP da disciplina de **Desenvolvimento de Softwares Escaláveis**, com foco na criação de um microsserviço, comunicação entre serviços, descoberta de serviços e utilização de um API Gateway.
+Nesta quarta entrega, o sistema foi refatorado para utilizar uma **Arquitetura Orientada a Eventos (Event-Driven Architecture)**, substituindo a comunicação síncrona entre `ms-gestao-alunos` e `ms-historico` por uma comunicação **assíncrona utilizando RabbitMQ**.
+
+O projeto foi desenvolvido como quarta entrega do TP da disciplina de **Desenvolvimento de Softwares Escaláveis**, com foco em comunicação assíncrona, mensageria, padrões de mensagens e desacoplamento entre microsserviços.
 
 ---
 
 ## 📌 Objetivos
 
-- Incorporar um novo serviço ao modelo de domínio, refletindo a nova arquitetura distribuída.
-- Implementar novos endpoints de API REST para o microsserviço.
-- Desenvolver o microsserviço utilizando Spring Boot e Spring Cloud.
-- Criar repositórios dedicados para gerenciar os dados de cada serviço.
-- Integrar os novos serviços à interface React.
-- Expandir a cobertura de testes automatizados.
+- Refatorar a comunicação entre os microsserviços para um modelo orientado a eventos.
+- Utilizar o RabbitMQ como message broker.
+- Implementar comunicação assíncrona entre `ms-gestao-alunos` e `ms-historico`.
+- Aplicar padrões de mensagens utilizando comandos e resultados.
+- Utilizar abstrações do Spring Boot para integração com RabbitMQ.
+- Reduzir o acoplamento entre os microsserviços.
+- Melhorar a resiliência e a escalabilidade da comunicação.
+- Demonstrar o funcionamento do fluxo de mensagens de forma prática.
 
 ---
 
@@ -34,25 +37,29 @@ O projeto foi desenvolvido como terceira entrega do TP da disciplina de **Desenv
 - Cadastro de alunos
 - Listagem de alunos
 - Busca de aluno por ID
-- Edição de alunos
+- Atualização de alunos
 - Remoção de alunos
 - Registro automático de histórico
 - Consulta do histórico de um aluno
-- Comunicação entre microsserviços via Feign
+- Comunicação assíncrona entre microsserviços
+- Publicação de mensagens utilizando RabbitMQ
+- Consumo de mensagens utilizando RabbitMQ
+- Confirmação do processamento do histórico
+- Tratamento de resultado confirmado ou recusado
 - Descoberta de serviços utilizando Eureka
 - Roteamento das requisições através do API Gateway
-- Interface web desenvolvida com React
 
 ---
 
 ## 🏛 Arquitetura
 
-A aplicação utiliza uma arquitetura baseada em **microsserviços**, separando as responsabilidades em aplicações independentes, cada uma com seu próprio banco de dados.
+A aplicação utiliza uma arquitetura baseada em **microsserviços**, com comunicação assíncrona entre os serviços de gestão de alunos e histórico.
 
 ```text
                               ┌───────────────────────┐
-                              │        FRONT-END      │
-                              │       React :3000     │
+                              │        CLIENTE        │
+                              │      Swagger /       │
+                              │       Front-end      │
                               └───────────┬───────────┘
                                           │
                                           │ HTTP / REST
@@ -62,19 +69,51 @@ A aplicação utiliza uma arquitetura baseada em **microsserviços**, separando 
                               │         :8080         │
                               └───────────┬───────────┘
                                           │
-                           ┌──────────────┴──────────────┐
-                           │                             │
-                           ▼                             ▼
-                ┌───────────────────────┐     ┌───────────────────────┐
-                │   MS-GESTAO-ALUNOS    │     │    MS-HISTORICO       │
-                │         :8081         │     │       :8082           │
-                └───────────┬───────────┘     └─────────┬─────────────┘
-                            │                           │
-                            │ Feign                     │
-                            │ POST /historico           │
-                            └──────────────┬────────────┘
-                                           │
-                                           ▼
+                                          ▼
+                              ┌───────────────────────┐
+                              │   MS-GESTAO-ALUNOS    │
+                              │         :8081         │
+                              └───────────┬───────────┘
+                                          │
+                                          │ RegistrarHistoricoCommand
+                                          ▼
+                              ┌───────────────────────┐
+                              │       RABBITMQ        │
+                              │         :5672         │
+                              │                       │
+                              │   alunos.exchange     │
+                              └───────────┬───────────┘
+                                          │
+                              historico.registrar
+                                          │
+                                          ▼
+                              ┌───────────────────────┐
+                              │     MS-HISTORICO      │
+                              │         :8082         │
+                              └───────────┬───────────┘
+                                          │
+                                          │ Salva histórico
+                                          ▼
+                              ┌───────────────────────┐
+                              │       BANCO H2        │
+                              └───────────────────────┘
+                                          │
+                                          │ ResultadoHistorico
+                                          ▼
+                              ┌───────────────────────┐
+                              │       RABBITMQ        │
+                              │                       │
+                              │ historico.confirmado  │
+                              │ historico.recusado    │
+                              └───────────┬───────────┘
+                                          │
+                                          ▼
+                              ┌───────────────────────┐
+                              │   MS-GESTAO-ALUNOS    │
+                              │ ResultadoHistorico    │
+                              │      Listener         │
+                              └───────────────────────┘
+
                               ┌───────────────────────┐
                               │        EUREKA         │
                               │         :8761         │
@@ -82,52 +121,283 @@ A aplicação utiliza uma arquitetura baseada em **microsserviços**, separando 
                               └───────────────────────┘
 ```
 
-### Descrição dos serviços
+---
 
-| Serviço              | Porta | Responsabilidade                                                     |
-| -------------------- | ----- | -------------------------------------------------------------------- |
-| **eureka-server**    | 8761  | Registro e descoberta de serviços (Service Discovery)                |
-| **api-gateway**      | 8080  | Ponto único de entrada, roteia as requisições para os microsserviços |
-| **ms-gestao-alunos** | 8081  | Cadastro, consulta, atualização e exclusão de alunos                 |
-| **ms-historico**     | 8082  | Registro e consulta do histórico de alterações dos alunos            |
-| **frontend**         | 3000  | Interface web em React consumindo a API via Gateway                  |
+## 🔄 Comunicação Orientada a Eventos
+
+Na versão anterior do projeto, o `ms-gestao-alunos` utilizava **OpenFeign** para realizar uma chamada HTTP diretamente ao `ms-historico`.
+
+Nesta entrega, essa comunicação foi substituída por **mensageria assíncrona utilizando RabbitMQ**.
+
+### Fluxo anterior
+
+```text
+ms-gestao-alunos
+       │
+       │ HTTP / Feign
+       ▼
+ms-historico
+```
+
+### Fluxo atual
+
+```text
+ms-gestao-alunos
+       │
+       │ Command
+       ▼
+    RabbitMQ
+       │
+       ▼
+ms-historico
+       │
+       │ Result
+       ▼
+    RabbitMQ
+       │
+       ▼
+ms-gestao-alunos
+```
+
+Dessa forma, os microsserviços não precisam realizar uma chamada HTTP direta para registrar o histórico.
 
 ---
 
-## 🧩 Modelagem de Domínio
+## 🐇 RabbitMQ
 
-### Domínio
+O **RabbitMQ** é utilizado como intermediário na comunicação entre os microsserviços.
 
-**Health & Fitness** — sistema responsável pelo gerenciamento de alunos de uma academia e do histórico de suas alterações.
+O projeto utiliza um **Topic Exchange** chamado:
 
-### Subdomínios
+```text
+alunos.exchange
+```
 
-**Core Domain — Gestão de Alunos**
-Responsável pelo cadastro, consulta, atualização e remoção dos alunos.
+### Filas
 
-**Supporting Domain — Histórico**
-Responsável por registrar todas as alterações realizadas nos dados dos alunos, permitindo auditoria e rastreabilidade. Extraído como microsserviço independente por possuir baixo acoplamento com o domínio principal e diferentes necessidades de escala e evolução.
+| Fila                               | Responsabilidade                                 |
+| ---------------------------------- | ------------------------------------------------ |
+| `historico.registrar.queue`        | Recebe solicitações para registrar histórico     |
+| `alunos.resultado-historico.queue` | Recebe o resultado do processamento do histórico |
 
-### Comunicação entre os bounded contexts
+### Routing Keys
 
-Antes da separação, o histórico era acessado diretamente via relacionamento JPA (`@OneToMany`/`@ManyToOne`). Após a extração em microsserviço, essa referência direta deixou de existir — a comunicação passou a ser feita exclusivamente via **REST**, com o `ms-gestao-alunos` chamando o `ms-historico` através de um client **OpenFeign**, trocando apenas o identificador do aluno (`alunoId`) em vez do objeto completo.
+| Routing Key            | Finalidade                                       |
+| ---------------------- | ------------------------------------------------ |
+| `historico.registrar`  | Solicita o registro de um histórico              |
+| `historico.confirmado` | Informa que o histórico foi registrado           |
+| `historico.recusado`   | Informa que o registro do histórico foi recusado |
+
+---
+
+## 📨 Padrões de Mensagens
+
+A comunicação utiliza dois tipos principais de mensagens.
+
+### RegistrarHistoricoCommand
+
+Enviado pelo `ms-gestao-alunos` para solicitar o registro do histórico.
+
+```java
+public class RegistrarHistoricoCommand {
+
+    private Long alunoId;
+    private String descricao;
+}
+```
+
+Exemplo:
+
+```json
+{
+  "alunoId": 1,
+  "descricao": "Aluno cadastrado"
+}
+```
+
+---
+
+### ResultadoHistorico
+
+Enviado pelo `ms-historico` após o processamento da solicitação.
+
+```java
+public class ResultadoHistorico {
+
+    private Long alunoId;
+    private boolean confirmado;
+    private String motivo;
+}
+```
+
+Exemplo de confirmação:
+
+```json
+{
+  "alunoId": 1,
+  "confirmado": true,
+  "motivo": null
+}
+```
+
+Exemplo de recusa:
+
+```json
+{
+  "alunoId": 1,
+  "confirmado": false,
+  "motivo": "Não foi possível registrar o histórico"
+}
+```
+
+---
+
+## 🔁 Fluxo de Cadastro de Aluno
+
+Quando um novo aluno é cadastrado, o fluxo ocorre da seguinte forma:
+
+```text
+1. POST /alunos
+       │
+       ▼
+2. AlunoService salva o aluno
+       │
+       ▼
+3. HistoricoPublisher publica RegistrarHistoricoCommand
+       │
+       ▼
+4. RabbitMQ recebe a mensagem
+       │
+       ▼
+5. historico.registrar.queue
+       │
+       ▼
+6. HistoricoListener recebe a mensagem
+       │
+       ▼
+7. HistoricoService registra o histórico
+       │
+       ▼
+8. ResultadoHistorico é publicado
+       │
+       ▼
+9. RabbitMQ encaminha o resultado
+       │
+       ▼
+10. ResultadoHistoricoListener recebe a confirmação
+```
+
+---
+
+## 🧩 Componentes de Mensageria
+
+### ms-gestao-alunos
+
+```text
+messaging/
+├── HistoricoPublisher.java
+├── RegistrarHistoricoCommand.java
+├── ResultadoHistorico.java
+├── ResultadoHistoricoListener.java
+└── RabbitMQConfig.java
+```
+
+### ms-historico
+
+```text
+messaging/
+├── HistoricoListener.java
+├── RegistrarHistoricoCommand.java
+├── ResultadoHistorico.java
+└── RabbitMQConfig.java
+```
+
+### HistoricoPublisher
+
+Responsável por publicar o comando de registro de histórico:
+
+```java
+rabbitTemplate.convertAndSend(
+        RabbitMQConfig.EXCHANGE,
+        RabbitMQConfig.ROUTING_KEY_REGISTRAR,
+        comando
+);
+```
+
+### HistoricoListener
+
+Responsável por consumir o comando recebido pelo RabbitMQ e chamar o serviço responsável pelo registro do histórico.
+
+### ResultadoHistoricoListener
+
+Responsável por receber o resultado do processamento e informar se o histórico foi confirmado ou recusado.
+
+---
+
+## 📊 Vantagens da Arquitetura Orientada a Eventos
+
+A utilização de comunicação assíncrona proporciona algumas vantagens:
+
+- **Menor acoplamento:** os serviços não precisam realizar chamadas HTTP diretamente entre si.
+- **Resiliência:** o produtor não depende de uma resposta imediata do consumidor.
+- **Escalabilidade:** consumidores podem ser executados em múltiplas instâncias.
+- **Processamento assíncrono:** operações podem continuar enquanto o processamento da mensagem ocorre.
+- **Flexibilidade:** novos consumidores podem ser adicionados aos eventos sem alterar diretamente o produtor.
+- **Desacoplamento temporal:** produtor e consumidor não precisam estar executando exatamente no mesmo momento para que a mensagem seja encaminhada pela infraestrutura de mensageria.
+
+---
+
+## ⚠️ Pontos de Atenção
+
+A arquitetura orientada a eventos também adiciona alguns cuidados:
+
+- O processamento deixa de ser imediatamente síncrono.
+- É necessário monitorar filas e consumidores.
+- Falhas de processamento precisam ser tratadas adequadamente.
+- Mensagens podem exigir mecanismos de retry e controle de duplicidade em cenários mais complexos.
+- O sistema passa a possuir mais componentes de infraestrutura.
+
+Neste projeto, o RabbitMQ é utilizado como intermediário para organizar a comunicação entre os microsserviços.
+
+---
+
+## 🎯 Cenários de Uso
+
+A comunicação orientada a eventos é adequada para operações que não precisam de uma resposta imediata do serviço consumidor.
+
+No projeto, o registro do histórico é um exemplo desse cenário:
+
+```text
+Cadastro do aluno
+       │
+       ▼
+Aluno salvo
+       │
+       ▼
+Evento/comando enviado
+       │
+       ▼
+Registro do histórico processado
+```
+
+O cadastro do aluno não precisa executar diretamente uma chamada HTTP para o serviço de histórico.
 
 ---
 
 ## 🛠 Tecnologias
 
-- Java 21
+- Java 17
 - Spring Boot 4.0.7
 - Spring Cloud 2025.1.2
 - Spring Web (MVC)
 - Spring Data JPA
-- Spring Cloud Gateway (Server WebMVC)
-- Spring Cloud Netflix Eureka (Server e Client)
-- Spring Cloud OpenFeign
+- Spring AMQP
+- RabbitMQ 4.3.6
+- Spring Cloud Gateway
+- Spring Cloud Netflix Eureka
 - H2 Database
 - Maven
 - Lombok
-- React
 - JUnit 5
 
 ---
@@ -135,36 +405,38 @@ Antes da separação, o histórico era acessado diretamente via relacionamento J
 ## 📁 Estrutura do Projeto
 
 ```text
-TP3-Health_Fitness
+TP4-Health_Fitness
 │
-├── eureka-server/                 # Servidor de descoberta de serviços
-│   └── src/main/java/br/edu/infnet/eurekaserver/
+├── eureka-server/                    # Servidor de descoberta de serviços
+│   └── src/main/java/
 │
-├── api-gateway/                   # Gateway de roteamento
-│   └── src/main/java/br/edu/infnet/apigateway/
-│       └── config/                # Configuração de CORS
+├── api-gateway/                      # Gateway de roteamento
+│   └── src/main/java/
 │
-├── ms-gestao-alunos/               # Microsserviço de gestão de alunos
+├── ms-gestao-alunos/                 # Microsserviço de gestão de alunos
 │   └── src/main/java/br/edu/infnet/ms_gestao_alunos/
-│       ├── client/                # Feign Client para o ms-historico
 │       ├── controllers/
 │       ├── services/
 │       ├── repositories/
-│       └── models/
+│       ├── models/
+│       └── messaging/
+│           ├── HistoricoPublisher.java
+│           ├── RegistrarHistoricoCommand.java
+│           ├── ResultadoHistorico.java
+│           ├── ResultadoHistoricoListener.java
+│           └── RabbitMQConfig.java
 │
-├── ms-historico/                  # Microsserviço de histórico
+├── ms-historico/                     # Microsserviço de histórico
 │   └── src/main/java/br/edu/infnet/ms_historico/
 │       ├── controllers/
 │       ├── services/
 │       ├── repositories/
-│       └── models/
-│
-├── frontend/                      # Aplicação React
-│   ├── src/
-│   │   ├── components/
-│   │   ├── services/
-│   │   └── App.jsx
-│   └── package.json
+│       ├── models/
+│       └── messaging/
+│           ├── HistoricoListener.java
+│           ├── RegistrarHistoricoCommand.java
+│           ├── ResultadoHistorico.java
+│           └── RabbitMQConfig.java
 │
 └── README.md
 ```
@@ -173,7 +445,9 @@ TP3-Health_Fitness
 
 ## 🔗 Endpoints
 
-### Alunos (`ms-gestao-alunos`, via Gateway em `/alunos`)
+### Alunos
+
+`ms-gestao-alunos` — porta `8081`
 
 | Método | Endpoint       | Descrição             |
 | ------ | -------------- | --------------------- |
@@ -183,7 +457,9 @@ TP3-Health_Fitness
 | PUT    | `/alunos/{id}` | Atualiza um aluno     |
 | DELETE | `/alunos/{id}` | Remove um aluno       |
 
-### Histórico (`ms-historico`, via Gateway em `/historico`)
+### Histórico
+
+`ms-historico` — porta `8082`
 
 | Método | Endpoint               | Descrição                              |
 | ------ | ---------------------- | -------------------------------------- |
@@ -192,102 +468,229 @@ TP3-Health_Fitness
 
 ---
 
+## 🐇 Configuração do RabbitMQ
+
+O projeto utiliza uma instalação local do RabbitMQ.
+
+### Configuração
+
+```properties
+spring.rabbitmq.host=localhost
+spring.rabbitmq.port=5672
+spring.rabbitmq.username=guest
+spring.rabbitmq.password=guest
+```
+
+### Management UI
+
+O RabbitMQ Management permite visualizar exchanges, filas, mensagens e consumidores.
+
+```text
+http://localhost:15672
+```
+
+---
+
 ## 🚀 Como executar
 
 ### Pré-requisitos
 
-- Java 21
+- Java 17
 - Maven
-- Node.js e npm
+- RabbitMQ
+- Git
 
 ### 1. Clonar o projeto
 
 ```bash
-git clone https://github.com/LeticiaFAAGomes/TP3-Health_Fitness.git
-cd TP3-Health_Fitness
+git clone https://github.com/LeticiaFAAGomes/TP4-Health_Fitness.git
+cd TP4-Health_Fitness
 ```
 
-### 2. Subir os serviços (nessa ordem)
+### 2. Iniciar o RabbitMQ
+
+Verifique se o serviço RabbitMQ está em execução.
+
+O Management UI pode ser acessado em:
+
+```text
+http://localhost:15672
+```
+
+### 3. Subir os serviços
+
+#### Eureka Server
 
 ```bash
-# 1. Eureka Server
 cd eureka-server
 mvn spring-boot:run
 ```
 
-Aguarde o Eureka iniciar completamente antes de seguir.
+Aguarde o Eureka iniciar completamente.
+
+#### Microsserviço de Histórico
 
 ```bash
-# 2. Microsserviço de Histórico
 cd ms-historico
 mvn spring-boot:run
 ```
 
+#### Microsserviço de Gestão de Alunos
+
 ```bash
-# 3. Microsserviço de Gestão de Alunos
 cd ms-gestao-alunos
 mvn spring-boot:run
 ```
 
+#### API Gateway
+
 ```bash
-# 4. API Gateway
 cd api-gateway
 mvn spring-boot:run
 ```
 
-### 3. Subir o Front-end
+---
 
-```bash
-cd frontend
-npm install
-npm start
+## 🧪 Teste da Comunicação Assíncrona
+
+A comunicação pode ser validada através do Swagger.
+
+### 1. Cadastrar um aluno
+
+No `ms-gestao-alunos`:
+
+```text
+POST http://localhost:8081/alunos
 ```
 
-### 4. Acessos
+Exemplo:
 
-| Serviço                       | URL                              |
-| ----------------------------- | -------------------------------- |
-| Front-end                     | http://localhost:3000            |
-| API Gateway                   | http://localhost:8080            |
-| Painel Eureka                 | http://localhost:8761            |
-| Console H2 — Gestão de Alunos | http://localhost:8081/h2-console |
-| Console H2 — Histórico        | http://localhost:8082/h2-console |
+```json
+{
+  "nome": "Maria",
+  "dataNascimento": "2000-05-10T00:00:00",
+  "email": "maria@email.com",
+  "telefone": "71999999999"
+}
+```
+
+### 2. Verificar o recebimento no ms-historico
+
+O console deve apresentar:
+
+```text
+Mensagem recebida pelo ms-historico
+Alunos: 2
+Descrição: Aluno cadastrado
+```
+
+### 3. Verificar o resultado no ms-gestao-alunos
+
+Após o processamento, o console deve apresentar:
+
+```text
+Resultado do histórico recebido
+Alunos: 2
+Histórico Confirmado
+```
+
+### 4. Consultar o histórico
+
+```text
+GET http://localhost:8082/historico/2
+```
+
+O histórico registrado deverá aparecer na resposta.
+
+Esse teste demonstra o fluxo completo:
+
+```text
+POST /alunos
+     ↓
+HistoricoPublisher
+     ↓
+RabbitMQ
+     ↓
+HistoricoListener
+     ↓
+HistoricoService
+     ↓
+Banco de dados
+     ↓
+ResultadoHistorico
+     ↓
+RabbitMQ
+     ↓
+ResultadoHistoricoListener
+```
 
 ---
 
-## 🧪 Testes
+## 📋 Filas no RabbitMQ
 
-Foram desenvolvidos testes automatizados para validar a camada de persistência de cada microsserviço, utilizando `@DataJpaTest` com banco H2 em memória.
+Durante a execução da aplicação, as seguintes filas são criadas:
 
-### ms-gestao-alunos
+| Fila                               | Consumidor         |
+| ---------------------------------- | ------------------ |
+| `historico.registrar.queue`        | `ms-historico`     |
+| `alunos.resultado-historico.queue` | `ms-gestao-alunos` |
 
-`src/test/java/br/edu/infnet/ms_gestao_alunos/aluno/AlunoTest.java`
-
-| Teste                                      | Cenário                                                                           |
-| ------------------------------------------ | --------------------------------------------------------------------------------- |
-| `deveSalvarAlunoQuandoDadosForemValidos`   | Salva um aluno e confirma que o ID foi gerado e os dados persistidos corretamente |
-| `deveBuscarAlunoPorIdQuandoAlunoExistir`   | Busca um aluno pelo ID e confirma que os dados retornados batem                   |
-| `deveListarTodosAlunosQuandoAlunosExistem` | Salva múltiplos alunos e confirma que todos aparecem na listagem                  |
-| `deveAtualizarAlunoQuandoAlunoExistir`     | Atualiza um campo do aluno e confirma que a alteração foi persistida              |
-| `deveExcluirAlunoQuandoAlunoExistir`       | Remove um aluno e confirma que ele deixa de existir no repositório                |
+O RabbitMQ Management permite acompanhar a quantidade de mensagens e consumidores conectados em cada fila.
 
 ---
 
-## 📜 Histórico de Alterações
+## 🔄 Refatoração Realizada
 
-Toda operação realizada sobre um aluno gera automaticamente um registro de histórico, através da comunicação Feign entre `ms-gestao-alunos` e `ms-historico`.
+A principal alteração desta entrega foi a substituição da comunicação síncrona baseada em **OpenFeign** pela comunicação assíncrona baseada em **RabbitMQ**.
 
-| Operação    | Registro gerado            |
-| ----------- | -------------------------- |
-| Cadastro    | Aluno cadastrado           |
-| Atualização | Dados do aluno atualizados |
-| Exclusão    | Aluno removido             |
+### Antes
 
-Cada registro armazena:
+```text
+ms-gestao-alunos
+       │
+       │ OpenFeign / HTTP
+       ▼
+ms-historico
+```
 
-- `alunoId`
-- `descricao`
-- `data`
+### Depois
+
+```text
+ms-gestao-alunos
+       │
+       │ RabbitMQ
+       ▼
+ms-historico
+       │
+       │ Resultado
+       ▼
+ms-gestao-alunos
+```
+
+A responsabilidade de comunicação passou a ser concentrada na camada `messaging`, utilizando `RabbitTemplate`, `@RabbitListener`, exchanges, filas e routing keys.
+
+---
+
+## 📚 Conclusão
+
+Nesta quarta entrega, o sistema de gestão de alunos foi refatorado para utilizar uma **Arquitetura Orientada a Eventos**, com RabbitMQ como message broker.
+
+A comunicação entre `ms-gestao-alunos` e `ms-historico` deixou de depender de chamadas HTTP síncronas para o registro do histórico e passou a utilizar mensagens assíncronas.
+
+Foram implementados:
+
+- RabbitMQ como message broker;
+- Exchange do tipo Topic;
+- Filas para comandos e resultados;
+- `RegistrarHistoricoCommand`;
+- `HistoricoPublisher`;
+- `HistoricoListener`;
+- `ResultadoHistorico`;
+- `ResultadoHistoricoListener`;
+- Routing Keys para diferentes resultados;
+- Conversão automática das mensagens para JSON utilizando Spring AMQP.
+
+O fluxo foi validado através do cadastro de alunos, processamento do histórico, persistência no banco e recebimento do resultado pelo serviço de gestão de alunos.
 
 ---
 
@@ -295,7 +698,7 @@ Cada registro armazena:
 
 **Letícia Gomes**
 
-Projeto desenvolvido para a disciplina **Desenvolvimento de Softwares Escaláveis**, aplicando conceitos de uma arquitetura baseada em microsserviços com Spring Boot e Spring Cloud no back-end e React no front-end, Domain-Driven Design (DDD), Spring Data JPA, persistência de dados e testes.
+Projeto desenvolvido para a disciplina **Desenvolvimento de Softwares Escaláveis**, aplicando conceitos de arquitetura de microsserviços, comunicação assíncrona, mensageria, RabbitMQ, Spring Boot, Spring Cloud e arquitetura orientada a eventos.
 
 ---
 
